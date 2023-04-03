@@ -127,147 +127,47 @@ Host and port should be delimited with ':'."
 
 ;;; network protocol header encoding / decoding
 
-(defun ajsc-net-header-str (len)
-  "Compute header string for Janet spork message of LEN bytes.
-
-Check `most-positive-fixnum` for Emacs integer limit.  Apparently
-this varies by machine.  In practice, it seems unlikely one would
-be sending anything remotely close to the limit."
-  (let (;; XXX: not using -- not likely in real life?
-        (int-max (min most-positive-fixnum (lsh 1 32)))
-        (byte-strings nil)
-        (cnt 3))
-    ;; bytes 4 through 2
-    (while (< 0 cnt)
-      (let ((n-bits (* 8 cnt)))
-        (if (>= len (lsh 1 n-bits))
-          (let* (;; shifted bit pattern of the nth byte
-                 (shifted-bits (logand (lsh 255 n-bits)
-                                       len))
-                 ;; value of the nth byte
-                 (value (lsh shifted-bits (- n-bits)))
-                 ;; byte as a string
-                 (byte-string (byte-to-string value)))
-            (setq byte-strings (cons byte-string byte-strings))
-            (setq len (- len shifted-bits)))
-          (setq byte-strings (cons (byte-to-string 0)
-                                   byte-strings))))
-      (setq cnt (1- cnt)))
-    ;; byte 1
-    (setq byte-strings (cons (byte-to-string len)
-                             byte-strings))
-    ;; header is concatenation of accumulated 1-char strings
-    (apply #'concat byte-strings)))
-
-(defun ajsc-decode-net-header-str (header-str)
-  "Compute length represented by 4-byte HEADER-STR.
-
-Check `most-positive-fixnum` for Emacs integer limit.  Apparently
-this varies by machine.  In practice, it seems unlikely one would
-be sending anything remotely close to the limit."
-  ;; XXX
-  (message "header-str: %S" header-str)
-  (let (;; XXX: not using -- not likely in real life?
-        (int-max (min most-positive-fixnum (lsh 1 32))))
-    (let ((result
-           (+ (aref header-str 0)
-              (* (aref header-str 1) (lsh 1 8))
-              (* (aref header-str 2) (lsh 1 16))
-              (* (aref header-str 3) (lsh 1 24)))))
-      (message "computed length: %d" result)
-      result)))
+(defun ajsc-pack-string (str)
+  (bindat-pack
+   (bindat-type
+     (length uintr 32)
+     (data str length))
+   `((length . ,(string-bytes str))
+     (data . ,str))))
 
 ;;; handling possibly fragmented network info from emacs
 
-(defvar ajsc--recv-header-bytes "")
-
-(defvar ajsc--recv-decoded-bytes "")
-
-(defvar ajsc--recv-held-msgs "")
-
-(defun ajsc--recv-reset-state ()
-  "Reset message reciving state."
-  (setq ajsc--recv-header-bytes "")
-  (setq ajsc--recv-decoded-bytes "")
-  (setq ajsc--recv-held-msgs ""))
-
-(defun ajsc--need-more-header-bytes-p ()
-  "Determines if more header bytes are needed."
-  (< (string-bytes ajsc--recv-header-bytes) 4))
+(defvar ajsc--decoded-len nil)
 
 (defun ajsc--parse-in-bytes (in-bytes)
   "Helper for processing IN-BYTES received from net via Emacs."
   ;; XXX
-  (message "length in-bytes: %d" (string-bytes in-bytes))
-  (if (ajsc--need-more-header-bytes-p)
-      ;; not enough info to calculate message length
-      (let* ((in-byte-cnt (string-bytes in-bytes))
-             (missing-cnt (- 4 (string-bytes ajsc--recv-header-bytes))))
-        ;; XXX
-        (message "number of header bytes needed: %d" missing-cnt)
-        ;; XXX: guessing that this is almost always true
-        (if (<= missing-cnt in-byte-cnt)
-            (let ((more-header-bytes (substring in-bytes 0 missing-cnt))
-                  (remaining-in-bytes (substring in-bytes missing-cnt)))
-              (message "filling in header bytes")
-              (message "more-header-bytes: %S" more-header-bytes)
-              (message "remaining-in-bytes: %S" remaining-in-bytes)
-              (message "ajsc--recv-header-bytes: %S" ajsc--recv-header-bytes)
-              (setq ajsc--recv-header-bytes
-                    (concat ajsc--recv-header-bytes
-                            more-header-bytes))
-              (message "ajsc--recv-header-bytes: %S" ajsc--recv-header-bytes)
-              ;; try again
-              (ajsc--parse-in-bytes remaining-in-bytes))
-          ;; not enough bytes to fill up the header bytes - unlikely?
-          (progn
-            (message "header not complete yet")
-            (setq ajsc--recv-header-bytes
-                  (concat ajsc--recv-header-bytes
-                          in-bytes))
-            ;; return empty string -- no data yet
-            "")))
-    ;; message length can be calculated because all header bytes found
-    (let* ((msg-len (ajsc-decode-net-header-str ajsc--recv-header-bytes))
-           (in-byte-cnt (string-bytes in-bytes))
-           (decoded-bytes ajsc--recv-decoded-bytes)
-           (rem-cnt (- msg-len (string-bytes decoded-bytes))))
-      ;; XXX
-      (message "msg-len: %d" msg-len)
-      (message "in-byte-cnt: %d" in-byte-cnt)
-      (message "rem-cnt: %d" rem-cnt)
-      (cond
-       ;; all remaining bytes of message available
-       ((= rem-cnt in-byte-cnt)
-        (message "got all bytes")
-        (setq ajsc--recv-header-bytes "")
-        (setq ajsc--recv-decoded-bytes "")
-        (let ((msgs (concat ajsc--recv-held-msgs
-                            decoded-bytes
-                            in-bytes)))
-          (setq ajsc--recv-held-msgs "")
-          ;; return all message content bytes
-          msgs))
-       ;; end of message not received yet
-       ((> rem-cnt in-byte-cnt)
-        (message "end of message not received yet")
-        (setq ajsc--recv-decoded-bytes
-              (concat ajsc--recv-decoded-bytes in-bytes))
-        ;; return empty string for now
-        "")
-       ;; start of another message detected
-       ((< rem-cnt in-byte-cnt)
-        (message "found end of message, but another message detected")
-        (let* ((remaining-msg-bytes (substring in-bytes 0 rem-cnt))
-               (remaining-in-bytes (substring in-bytes rem-cnt)))
-          (setq ajsc--recv-header-bytes "")
-          (setq ajsc--recv-decoded-bytes "")
-          (setq ajsc--recv-held-msgs
-                (concat ajsc--recv-held-msgs
-                        decoded-bytes
-                        remaining-msg-bytes))
-          ;; try again
-          (ajsc--parse-in-bytes remaining-in-bytes)))))))
+  (let ((len (string-bytes in-bytes)))
+    (message "length in-bytes: %s %s"
+             len
+             ajsc--decoded-len)
+    (cond ((null ajsc--decoded-len)
+           (let ((len-str  (substring in-bytes 0 4))
+                 (rest-str (substring in-bytes 4)))
+             (setq ajsc--decoded-len
+                   (bindat-get-field
+                    (bindat-unpack
+                     (bindat-type (length uintr 32))
+                     len-str)
+                    'length))
+             (ajsc--parse-in-bytes rest-str)))
+          ((= ajsc--decoded-len len)
+           (setq ajsc--decoded-len nil)
+           in-bytes)
+          ((< ajsc--decoded-len len)
+           (let ((rest (substring in-bytes 0 ajsc--decoded-len))
+                 (remaining (substring in-bytes ajsc--decoded-len)))
+             (setq ajsc--decoded-len nil)
+             (concat rest
+                     (ajsc--parse-in-bytes remaining))))
+          ((> ajsc--decoded-len len)
+           (cl-decf ajsc--decoded-len len)
+           in-bytes))))
 
 ;; XXX: it is possible we might receive a fragment of a message
 ;;      so it may be necessary to retain the initial 4-byte header to
@@ -293,14 +193,6 @@ be sending anything remotely close to the limit."
   ;; XXX
   (message "received: %S" string)
   (ajsc--parse-in-bytes string))
-
-;;; greeting portion of network protocol
-
-(defun ajsc-send-hello (process hello-str)
-  "Send PROCESS the HELLO-STR."
-  (process-send-string process
-                       (concat (ajsc-net-header-str (string-bytes hello-str))
-                               hello-str)))
 
 ;;; commands
 
@@ -400,17 +292,17 @@ be sending anything remotely close to the limit."
   ;; remove header bytes appropriately
   (add-hook 'comint-preoutput-filter-functions
             #'ajsc-preoutput-filter-function
-           nil 'local)
+            nil 'local)
   ;; XXX: does this need to be restricted to apply only to certain buffers?
   ;; prepend header bytes
   (setq comint-input-sender
         (lambda (proc string)
-          (let ((msg (substring-no-properties
-                      (concat
-                       (ajsc-net-header-str (1+ (string-bytes string)))
-                       string))))
+          (let ((msg
+                 (ajsc-pack-string
+                  (substring-no-properties
+                   (concat string "\n")))))
             (message "sending: %S" msg)
-            (comint-simple-send proc msg))))
+            (process-send-string proc msg))))
   (setq mode-line-process '(":%s")))
 
 ;;;###autoload
@@ -488,7 +380,8 @@ endpoint.  ENDPOINT is a string of the form: \"hostname:port\"."
               ;; XXX: without this, header bytes were being interpreted as
               ;;      multibyte sometimes
               (set-process-coding-system repl-process 'binary)
-              (ajsc-send-hello repl-process endpoint)
+              (process-send-string repl-process
+                                   (ajsc-pack-string endpoint))
               (with-current-buffer repl-buffer
                 (ajsc-mode)
                 (pop-to-buffer (current-buffer))
