@@ -102,7 +102,7 @@
 ;;;; Requirements
 
 (require 'comint)
-(require 'smartparens)
+(require 'thingatpt)
 (require 'subr-x)
 
 ;;;; The Rest
@@ -242,11 +242,10 @@ Host and port should be delimited with ':'."
 (defun ajsc-send-expression-at-point ()
   "Send expression at point."
   (interactive)
-  (let* ((thing (sp-get-thing t))
-         (start (sp-get thing :beg))
-         (end (sp-get thing :end)))
-    (when (and start end)
-      (ajsc-send-region start end))))
+  (when-let* ((bound (bounds-of-thing-at-point 'sexp))
+              (start (car bound))
+              (end (cdr bound)))
+    (ajsc-send-region start end)))
 
 (defun ajsc-switch-to-repl ()
   "Switch to the repl buffer named by `ajsc-repl-buffer-name`."
@@ -300,7 +299,9 @@ Host and port should be delimited with ':'."
           (let ((msg
                  (ajsc-pack-string
                   (substring-no-properties
-                   (concat string "\n")))))
+                   (if (s-ends-with? "\n" string)
+                       (concat string "\n")
+                     string)))))
             (message "sending: %S" msg)
             (process-send-string proc msg))))
   (setq mode-line-process '(":%s")))
