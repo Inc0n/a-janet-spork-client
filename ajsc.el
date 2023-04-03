@@ -198,20 +198,14 @@ Host and port should be delimited with ':'."
 (defun ajsc-send-code (code-str)
   "Send CODE-STR, a Janet form."
   (interactive "sCode: ")
-  (let ((here (point))
-        (original-buffer (current-buffer))
-        (repl-buffer (get-buffer ajsc-repl-buffer-name)))
+  (let ((repl-buffer (get-buffer ajsc-repl-buffer-name)))
     (if (not repl-buffer)
         (message (format "%s is missing..." ajsc-repl-buffer-name))
       ;; switch to ajsc buffer to prepare for appending
-      (set-buffer repl-buffer)
-      (goto-char (point-max))
-      (insert code-str)
-      (comint-send-input)
-      (set-buffer original-buffer)
-      (if (eq original-buffer repl-buffer)
-          (goto-char (point-max))
-        (goto-char here)))))
+      (with-current-buffer repl-buffer
+        (goto-char (point-max))
+        (insert code-str)
+        (comint-send-input)))))
 
 (defun ajsc-send-region (start end)
   "Send a region bounded by START and END."
