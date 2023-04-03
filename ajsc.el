@@ -2,7 +2,7 @@
 
 ;; Author: sogaiu
 ;; Version: 20200430
-;; Package-Requires: ((smartparens "1.11.0") (emacs "26.2"))
+;; Package-Requires: ((emacs "26.2"))
 ;; Keywords: janet, spork, network socket repl
 
 ;; This file is not part of GNU Emacs.
@@ -16,7 +16,7 @@
 ;; Ensure this file and the following dependencies (and their
 ;; dependencies) are in your load-path:
 ;;
-;;   smartparens
+;;   nil
 ;;
 ;;  and put this in your relevant init file:
 ;;
@@ -78,7 +78,6 @@
 ;;
 ;;   emacs
 ;;   janet
-;;   smartparens
 ;;
 ;; and transitively involved folks too ;)
 
@@ -238,7 +237,6 @@ Host and port should be delimited with ':'."
   (interactive)
   (ajsc-send-region (point-min) (point-max)))
 
-;; XXX: figure out how to do this without smartparens
 (defun ajsc-send-expression-at-point ()
   "Send expression at point."
   (interactive)
