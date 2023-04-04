@@ -127,12 +127,10 @@ Host and port should be delimited with ':'."
 ;;; network protocol header encoding / decoding
 
 (defun ajsc-pack-string (str)
-  (bindat-pack
-   (bindat-type
-     (length uintr 32)
-     (data str length))
-   `((length . ,(string-bytes str))
-     (data . ,str))))
+  (concat (bindat-pack
+           (bindat-type uintr 32)
+           (string-bytes str))
+          str))
 
 ;;; handling possibly fragmented network info from emacs
 
@@ -149,11 +147,9 @@ Host and port should be delimited with ':'."
            (let ((len-str  (substring in-bytes 0 4))
                  (rest-str (substring in-bytes 4)))
              (setq ajsc--decoded-len
-                   (bindat-get-field
-                    (bindat-unpack
-                     (bindat-type (length uintr 32))
-                     len-str)
-                    'length))
+                   (bindat-unpack
+                    (bindat-type uintr 32)
+                    len-str))
              (ajsc--parse-in-bytes rest-str)))
           ((= ajsc--decoded-len len)
            (setq ajsc--decoded-len nil)
@@ -382,5 +378,4 @@ endpoint.  ENDPOINT is a string of the form: \"hostname:port\"."
                 (pop-to-buffer current-buffer))))))))
 
 (provide 'ajsc)
-
 ;;; ajsc.el ends here
