@@ -292,8 +292,8 @@ Host and port should be delimited with ':'."
                  (ajsc-pack-string
                   (substring-no-properties
                    (if (s-ends-with? "\n" string)
-                       (concat string "\n")
-                     string)))))
+                       string
+                     (concat string "\n"))))))
             (message "sending: %S" msg)
             (process-send-string proc msg))))
   (setq mode-line-process '(":%s")))
