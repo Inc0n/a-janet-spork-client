@@ -143,26 +143,33 @@ Host and port should be delimited with ':'."
     (message "length in-bytes: %s %s"
              len
              ajsc--decoded-len)
-    (cond ((null ajsc--decoded-len)
-           (let ((len-str  (substring in-bytes 0 4))
-                 (rest-str (substring in-bytes 4)))
-             (setq ajsc--decoded-len
-                   (bindat-unpack
-                    (bindat-type uintr 32)
-                    len-str))
-             (ajsc--parse-in-bytes rest-str)))
-          ((= ajsc--decoded-len len)
-           (setq ajsc--decoded-len nil)
-           in-bytes)
-          ((< ajsc--decoded-len len)
-           (let ((rest (substring in-bytes 0 ajsc--decoded-len))
-                 (remaining (substring in-bytes ajsc--decoded-len)))
-             (setq ajsc--decoded-len nil)
-             (concat rest
-                     (ajsc--parse-in-bytes remaining))))
-          ((> ajsc--decoded-len len)
-           (cl-decf ajsc--decoded-len len)
-           in-bytes))))
+    (cond
+     ;; this is a new message
+     ((null ajsc--decoded-len)
+      (let ((len-str  (substring in-bytes 0 4))
+            (rest-str (substring in-bytes 4)))
+        ;; unpack message length
+        (setq ajsc--decoded-len
+              (bindat-unpack
+               (bindat-type uintr 32)
+               len-str))
+        ;; starts parsing
+        (ajsc--parse-in-bytes rest-str)))
+     ;; all message received
+     ((= ajsc--decoded-len len)
+      (setq ajsc--decoded-len nil)
+      in-bytes)
+     ;; end of current message and start of another
+     ((< ajsc--decoded-len len)
+      (let ((rest (substring in-bytes 0 ajsc--decoded-len))
+            (remaining (substring in-bytes ajsc--decoded-len)))
+        (setq ajsc--decoded-len nil)
+        (concat rest
+                (ajsc--parse-in-bytes remaining))))
+     ;; expecting more data incoming
+     ((> ajsc--decoded-len len)
+      (cl-decf ajsc--decoded-len len)
+      in-bytes))))
 
 ;; XXX: it is possible we might receive a fragment of a message
 ;;      so it may be necessary to retain the initial 4-byte header to
